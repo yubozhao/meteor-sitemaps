@@ -23,7 +23,7 @@ var Fiber = Npm.require('fibers');
 WebApp.connectHandlers.use(function(req, res, next) {
   new Fiber(function() {
     "use strict";
-		var out, urlStart, pages, urls;
+    var out, urlStart, pages, urls;
 
     urls = _.keys(sitemaps.list);
     if (!_.contains(urls, req.url))
@@ -32,21 +32,22 @@ WebApp.connectHandlers.use(function(req, res, next) {
     urlStart = (req.headers['x-forwarded-proto'] || req.protocol || 'http')
       + '://' + req.headers.host + '/';
 
-		pages = sitemaps.list[req.url];
+    pages = sitemaps.list[req.url];
     if (_.isFunction(pages))
       pages = pages();
     else if (!_.isArray(pages))
       throw new TypeError("sitemaps.add() expects an array or function");
 
-		out = '<?xml version="1.0" encoding="UTF-8"?>\n\n'
-			+ '<urlset \n'
+    out = '<?xml version="1.0" encoding="UTF-8"?>\n\n'
+      + '<urlset \n'
       + 'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"\n'
+      + 'xmlns="video=http://www.google.com/schemas/sitemap-video/1.1"\n'
       + 'xmlns:xhtml="http://www.w3.org/1999/xhtml">\n\n';
 
     var w3cDateTimeTS, date;
-		_.each(pages, function(page) {
+    _.each(pages, function(page) {
 
-			out += '   <url>\n'
+      out += '   <url>\n'
         + '      <loc>' + urlStart + escape(page.page.replace(/^\//,'')) + '</loc>\n';
 
       if (page.lastmod) {
@@ -57,7 +58,7 @@ WebApp.connectHandlers.use(function(req, res, next) {
           + date.getUTCHours().lpad(2) + ':'
           + date.getUTCMinutes().lpad(2) + ':'
           + date.getUTCSeconds().lpad(2) + '+00:00';
-				out += '      <lastmod>' + w3cDateTimeTS + '</lastmod>\n';
+        out += '      <lastmod>' + w3cDateTimeTS + '</lastmod>\n';
       }
 
       if (page.changefreq)
@@ -79,13 +80,37 @@ WebApp.connectHandlers.use(function(req, res, next) {
         });
       }
 
-			out	+= '   </url>\n\n';
-		});
+      if (page.video) {
+        //only create video sitemap when match these requirements
+        if (page.video.title && page.video.description && page.video.thumbnail_loc && (page.video.content_loc || page.video.player_loc)) {
+          var videoOut = '';
+          var videoKeys = Object.keys(page.video);
+          for (var i in videoKeys) {
+            var value = page.video[videoKeys[i]];
+            if (videoKeys[i] === 'expiration_date' || videoKeys[i] === 'publication_date'){
+              var date = value.getUTCFullYear() + '-'
+                + (value.getUTCMonth()+1).lpad(2) + '-'
+                + value.getUTCDate().lpad(2) + 'T'
+                + value.getUTCHours().lpad(2) + ':'
+                + value.getUTCMinutes().lpad(2) + ':'
+                + value.getUTCSeconds().lpad(2) + '+00:00';
 
-		out += '</urlset>\n';
+              value = date;
+            }
 
-		res.writeHead(200, {'Content-Type': 'application/xml'});
-		res.end(out, 'utf8');
+            videoOut += '         <video:' + videoKeys[i] + '/>' + value + '</video:' + videoKeys[i] + '>\n';
+          }
+          out += '      <video:video>\n' + videoOut + '      </video:video>\n';
+        }
+      }
+
+      out += '   </url>\n\n';
+    });
+
+    out += '</urlset>\n';
+
+    res.writeHead(200, {'Content-Type': 'application/xml'});
+    res.end(out, 'utf8');
     return;
   }).run();
 });
